@@ -1,0 +1,134 @@
+import numpy as np
+import pandas as pd
+
+from sklearn.datasets import make_classification
+X,Y=make_classification(n_samples=1000,n_features=5,random_state=42)
+
+X_train=X[:750,:]
+Y_train=Y[:750]
+X_test=X[:250:]
+Y_test=Y[:250:]
+
+Y_train=Y_train.reshape(1,-1)
+Y_test=Y_test.reshape(1,-1)
+Y_train.shape
+
+nn_arch=[
+    {'layer_units':5,'activation':'none'}, #input layer
+    {'layer_units':5,'activation':'relu'},
+    {'layer_units':4,'activation':'relu'},
+    {'layer_units':3,'activation':'relu'},
+    {'layer_units':1,'activation':'sigmoid'}
+]
+
+def initialize_parameters(nn_arch,seed_value):
+  np.random.seed(seed_value)
+  parameters={}
+  number_of_layers=len(nn_arch)
+  for l in range(1,number_of_layers):
+    parameters['W'+str(l)]=np.random.randn(
+        nn_arch[l]['layer_units'],
+        nn_arch[l-1]['layer_units']
+    )*0.01
+    parameters['b'+str(l)]=np.zeros((nn_arch[l]['layer_units'],1))
+  return parameters
+
+parameters=initialize_parameters(nn_arch,3)
+
+def sigmoid(z):
+  return 1/(1+np.exp(-z))
+def relu(z):
+  return np.maximum(0,z)
+
+def forward_propagation(parameters,X,nn_arch):
+  forward_cache={}
+  A_prev=X
+  number_of_layers=len(nn_arch)
+  for l in range(1,number_of_layers):
+    activation=nn_arch[l]['activation']
+    W=parameters['W'+str(l)]
+    b=parameters['b'+str(l)]
+    if activation=='relu':
+      forward_cache['Z'+str(l)]=np.dot(W,A_prev)+b
+      forward_cache['A'+str(l)]=relu(forward_cache['Z'+str(l)])
+    elif activation=='sigmoid':
+      forward_cache['Z'+str(l)]=np.dot(W,A_prev)+b
+      forward_cache['A'+str(l)]=sigmoid(forward_cache['Z'+str(l)])
+    A_prev=forward_cache['A'+str(l)]
+  AL=forward_cache['A'+str(l)]
+  forward_cache['A0']=X
+  return AL,forward_cache
+
+AL,forward_cache=forward_propagation(parameters,X_train,nn_arch)
+
+def compute_cost(AL,Y):
+  n=Y.shape[1]
+  cost=(-1/n)*np.sum((Y*np.log(AL))+((1-Y)*np.log(1-AL)))
+  #print(cost)
+  cost=np.squeeze(cost)
+  return cost
+
+compute_cost(AL,Y_train)
+
+def sigmoid_backward(dA_prev,Z):
+  S=sigmoid(Z)
+  dS=S*(1-S)
+  return dA_prev*dS
+
+def relu_backward(dA_prev,Z):
+  dZ=np.array(dA_prev,copy=True)
+  dZ[dZ<=0]=0
+  return dZ
+
+def back_propagation(Y,AL,forward_cache,nn_arch,parameters):
+  grads={}
+  n=Y.shape[1]
+  dAL=(AL-Y)/(AL*(1-AL))
+  dA_prev=dAL
+  for l in reversed(range(1,len(nn_arch))):
+    activation=nn_arch[l]['activation']
+    W_curr=parameters['W'+str(l)]
+    Z_curr=forward_cache['Z'+str(l)]
+    A_prev=forward_cache['A'+str(l-1)]
+    if activation=='sigmoid':
+      dZ=sigmoid_backward(dA_prev,Z_curr)
+      grads['dW'+str(l)]=(1/n)*np.dot(dZ,A_prev.T)
+      grads['db'+str(l)]=(1/n)*np.sum(dZ,axis=1,keepdims=True)
+      dA_prev=np.dot(W_curr.T,dZ)
+    elif activation=='relu':
+      dZ=relu_backward(dA_prev,Z_curr)
+      grads['dW'+str(l)]=(1/n)*np.dot(dZ,A_prev.T)
+      grads['db'+str(l)]=(1/n)*np.sum(dZ,axis=1,keepdims=True)
+      dA_prev=np.dot(W_curr.T,dZ)
+    if(l==len(nn_arch)-2):
+      print(forward_cache['Z3'].shape)
+  return grads
+
+grads=back_propagation(Y_train,AL,forward_cache,nn_arch,parameters)
+
+def update_parameters(parameters,grads,nn_arch,lr):
+  number_of_layers=len(nn_arch)
+  for l in range(1,number_of_layers):
+    parameters['W'+str(l)]=parameters['W'+str(l)]-lr*grads['dW'+str(l)]
+    parameters['b'+str(l)]=parameters['b'+str(l)]-lr*grads['db'+str(l)]
+  return parameters
+
+update_parameters(parameters,grads,nn_arch,0.1)
+
+def training(X,Y,nn_arch,iterations,lr):
+  costs=[]
+  parameters=initialize_parameters(nn_arch,3)
+  for i in range(iterations):
+    AL,forward_cache=forward_propagation(parameters,X,nn_arch)
+    cost=compute_cost(AL,Y)
+    if (i%100==0):
+      print('iterations:'+str(i)+','+'cost:'+str(cost))
+      costs.append(cost)
+    grads=back_propagation(Y,AL,forward_cache,nn_arch,parameters)
+    parameters=update_parameters(parameters,grads,nn_arch,lr)
+  return parameters,costs
+
+parameters,costs=training(X_train,Y_train,nn_arch,10000,0.001)
+
+import matplotlib.pyplot as plt
+plt.plot(costs)
